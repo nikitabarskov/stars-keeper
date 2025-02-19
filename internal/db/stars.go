@@ -66,7 +66,7 @@ func NewStarsStorage(db *sql.DB) (*StarsStorage, error) {
 	defer tx.Rollback()
 
 	migrations := []string{
-		createStarTable,
+		// createStarTable,
 	}
 	for _, migration := range migrations {
 		_, err = tx.Exec(migration)

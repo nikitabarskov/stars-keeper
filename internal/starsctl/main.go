@@ -77,8 +77,48 @@ func (s *StarsCtl) Close() error {
 	return s.db.Close()
 }
 
+type StarredRepository struct {
+	StarredRepository *github.StarredRepository
+	Readme            *github.RepositoryContent
+}
+
+func (s *StarsCtl) Fetch(ctx context.Context) (chan *github.StarredRepository, error) {
+	ch := make(chan *github.StarredRepository)
+	user, _, err := s.client.Users.Get(ctx, "")
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch user information: %v", err)
+	}
+
+	opt := &github.ActivityListStarredOptions{
+		ListOptions: github.ListOptions{
+			PerPage: 50,
+		},
+	}
+
+	go func() {
+		for {
+			starred, response, err := s.client.Activity.ListStarred(ctx, user.GetLogin(), opt)
+			if err != nil {
+				break
+			}
+
+			for _, star := range starred {
+				ch <- star
+			}
+
+			if response.NextPage == 0 {
+				close(ch)
+				break
+			}
+			opt.Page = response.NextPage
+		}
+	}()
+
+	return ch, nil
+}
+
 func (s *StarsCtl) Update(ctx context.Context) error {
-	starredRepositories := make(chan *github.StarredRepository)
+	starredRepositories := make(chan *StarredRepository)
 	eg, ctx := errgroup.WithContext(ctx)
 	eg.Go(func() error {
 		defer close(starredRepositories)
@@ -93,10 +133,10 @@ func (s *StarsCtl) Update(ctx context.Context) error {
 	return nil
 }
 
-func (s *StarsCtl) fetchStarredRepositories(ctx context.Context, starredRepositories chan *github.StarredRepository) error {
+func (s *StarsCtl) fetchStarredRepositories(ctx context.Context, starredRepositories chan *StarredRepository) error {
 	opt := &github.ActivityListStarredOptions{
 		ListOptions: github.ListOptions{
-			PerPage: 50,
+			PerPage: 100,
 		},
 	}
 	user, _, err := s.client.Users.Get(ctx, "")
@@ -108,9 +148,20 @@ func (s *StarsCtl) fetchStarredRepositories(ctx context.Context, starredReposito
 		if err != nil {
 			return err
 		}
-		for _, repo := range sr {
+		for _, starredRepository := range sr {
+			sr := new(StarredRepository)
+			if repo := starredRepository.GetRepository(); repo != nil {
+				if owner := repo.GetOwner(); owner != nil {
+					readme, _, err := s.client.Repositories.GetReadme(ctx, *owner.Login, *repo.Name, nil)
+					if err != nil {
+						return err
+					}
+					sr.Readme = readme
+				}
+			}
+			sr.StarredRepository = starredRepository
 			select {
-			case starredRepositories <- repo:
+			case starredRepositories <- sr:
 			case <-ctx.Done():
 				return nil
 			}
@@ -121,32 +172,31 @@ func (s *StarsCtl) fetchStarredRepositories(ctx context.Context, starredReposito
 		opt.Page = resp.NextPage
 	}
 }
-func (s *StarsCtl) dumpRepositories(ctx context.Context, starredRepositories chan *github.StarredRepository) error {
-	totalNumberOfRepositories := 0
+func (s *StarsCtl) dumpRepositories(ctx context.Context, starredRepositories chan *StarredRepository) error {
 	for starredRepository := range starredRepositories {
-		if starredRepository.GetRepository() == nil {
+		if starredRepository.StarredRepository == nil {
 			return fmt.Errorf("a star does not have an assigned repository, try again")
 		}
-
-		star, err := starsctldb.NewStar(starredRepository)
+		star, err := starsctldb.NewStar(starredRepository.StarredRepository)
 		if err != nil {
 			return err
 		}
+
 		err = s.stars.CreateOrUpdate(ctx, star)
 		if err != nil {
 			return err
 		}
-		repo, err := starsctldb.NewRepo(starredRepository.GetRepository())
+
+		repo, err := starsctldb.NewRepo(starredRepository.StarredRepository.Repository)
 		if err != nil {
 			return err
 		}
+
 		err = s.repos.CreateOrUpdate(ctx, repo)
 		if err != nil {
 			return err
 		}
-		totalNumberOfRepositories += 1
 	}
-	fmt.Printf("Total number of repositories saved: %d\n", totalNumberOfRepositories)
 	return nil
 }
 

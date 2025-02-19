@@ -9,8 +9,10 @@ import (
 )
 
 type Repo struct {
-	id   int64
-	body string
+	id          int64
+	description string
+	topics      []string
+	body        string
 }
 
 func NewRepo(repository *github.Repository) (*Repo, error) {
@@ -19,8 +21,10 @@ func NewRepo(repository *github.Repository) (*Repo, error) {
 		return nil, err
 	}
 	return &Repo{
-		id:   repository.GetID(),
-		body: string(body),
+		id:          repository.GetID(),
+		description: repository.GetDescription(),
+		topics:      repository.Topics,
+		body:        string(body),
 	}, nil
 }
 
@@ -35,6 +39,14 @@ CREATE TABLE IF NOT EXISTS repositories (
 )
 `
 
+const alterRepoTableAddDescription = `
+ALTER TABLE repositories ADD COLUMN description TEXT DEFAULT NULL
+`
+
+const alterRepoTableAddTopics = `
+ALTER TABLE repositories ADD COLUMN topics BLOB DEFAULT NULL
+`
+
 func NewReposStorage(db *sql.DB) (*ReposStorage, error) {
 	tx, err := db.BeginTx(context.Background(), nil)
 	if err != nil {
@@ -43,7 +55,9 @@ func NewReposStorage(db *sql.DB) (*ReposStorage, error) {
 	defer tx.Rollback()
 
 	migrations := []string{
-		createRepoTable,
+		// createRepoTable,
+		// alterRepoTableAddDescription,
+		// alterRepoTableAddTopics,
 	}
 	for _, migration := range migrations {
 		_, err = tx.Exec(migration)
