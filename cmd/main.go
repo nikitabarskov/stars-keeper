@@ -36,9 +36,12 @@ func main() {
 		log.Fatal(err)
 	}
 
-	err = ctl.Update(ctx)
+	repositories, err := ctl.Fetch(ctx)
 	if err != nil {
 		log.Fatalf("failed to update stars: %v", err)
+	}
+	for repository := range repositories {
+		log.Printf("Repository: %s", repository.GetRepository().GetName())
 	}
 }
 

@@ -20,3 +20,4 @@ fix:
 # validate code for issues (formatting in justfile, golang code)
 validate:
     test -z $(gofmt -l .)
+    golangci-lint run ./...

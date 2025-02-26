@@ -47,7 +47,7 @@ different knowledge bases and search engines, that I can use.
 ## Plan
 
 - [x] I can fetch a list of all starred repositories
-- [x?] I can fetch information about a specific repository
+- [x] I can fetch information about a specific repository
 - [ ] I understand what is a typical structure of my search in stars looks like
 - [ ] I can structure this information in a way that I can feed it to LLM and categorize it based on my queries
 - [ ] I can generate a new draft of star list
